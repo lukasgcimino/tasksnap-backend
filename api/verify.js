@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 
 const openai = new OpenAI({
+  // Stays as a Vercel environment variable — never hardcode this.
   apiKey: process.env.OPENAI_API_KEY,
 });
 
@@ -10,17 +11,13 @@ export default async (req, res) => {
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
+  if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
     const { choreName, imageBase64 } = req.body;
-
     if (!choreName || !imageBase64) {
       return res
         .status(400)
@@ -29,18 +26,27 @@ export default async (req, res) => {
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      max_tokens: 100,
+      max_tokens: 120,
       messages: [
         {
           role: "system",
-          content: `You are a task verification AI. Analyze the provided image and determine if it shows evidence that the chore "${choreName}" has been completed. Respond with ONLY a JSON object: {"verified": true/false, "reason": "brief explanation"}`,
+          content:
+            `You are a lenient task-verification assistant for a chore app. ` +
+            `Look at the image and decide whether it shows the chore "${choreName}" is ` +
+            `MOSTLY done. Be generous: if the space or task looks roughly 70% or more ` +
+            `complete, or shows clear genuine effort toward "${choreName}", mark it verified. ` +
+            `Do NOT demand perfection — a little mess left, a few stray items, or imperfect ` +
+            `framing is fine. Only mark it NOT verified if the image clearly shows the chore ` +
+            `was not attempted, is unrelated to "${choreName}", or is an obvious attempt to ` +
+            `trick you (a blank wall, a random unrelated object, a screenshot). ` +
+            `Respond with ONLY a JSON object: {"verified": true/false, "reason": "brief explanation"}`,
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: `Does this image show that the chore "${choreName}" is completed? JSON only.`,
+              text: `Is the chore "${choreName}" mostly done here? Be lenient. JSON only.`,
             },
             {
               type: "image_url",
@@ -56,7 +62,6 @@ export default async (req, res) => {
 
     let content = response.choices[0].message.content.trim();
     content = content.replace(/```json|```/g, "").trim();
-
     const parsed = JSON.parse(content);
 
     return res.status(200).json({
